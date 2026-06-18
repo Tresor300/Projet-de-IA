@@ -117,23 +117,6 @@ def main():
     print(f"Cluster associé : {cluster}")
     return cluster
 
-    if args.info:
-        meta = charger_meta()
-        if meta:
-            print("\nInformations sur le modèle :")
-            print(f"  k (clusters)       : {meta.get('k_optimal')}")
-            print(f"  Silhouette Score   : {meta.get('silhouette')}")
-            print(f"  Calinski-Harabasz  : {meta.get('calinski_harabasz')}")
-            print(f"  Davies-Bouldin     : {meta.get('davies_bouldin')}")
-            print(f"  Bornes (train)     : {meta.get('n_bornes')}\n")
-
-    print(f"Coordonnées : lat={args.latitude}, lon={args.longitude}")
-    cluster = predire_cluster(args.latitude, args.longitude)
-    print(f"Cluster associé : {cluster}")
-    return cluster
-
 
 if __name__ == "__main__":
     main()
-
-
