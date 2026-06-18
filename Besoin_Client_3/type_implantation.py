@@ -1,164 +1,97 @@
-
-# =====================================
-# script.py
-# Prédiction du type d'implantation
-# =====================================
-
 import pandas as pd
-import joblib
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+import folium
+from folium.plugins import HeatMap
 import os
+import sys
+import time
 
+def animer_texte(texte, vitesse=0.02):
+    """Petite fonction pour faire un effet 'machine à écrire' dans le terminal."""
+    for char in texte:
+        sys.stdout.write(char)
+        sys.stdout.flush()
+        time.sleep(vitesse)
+    print()
 
-# =====================================
-# Vérification des fichiers nécessaires
-# =====================================
+def creer_les_cartes_interactives():
+    print("\n" + "="*60)
+    animer_texte("🗺️  GÉNÉRATION DES CARTES GPS (CLUSTERING) 🗺️")
+    print("="*60 + "\n")
 
-fichiers = [
-    "modele_random_forest.pkl",
-    "encoders.pkl",
-    "encoder_y.pkl"
-]
+    # 1. Demander le fichier à l'utilisateur
+    fichier_donnees = input("👉 Entrez le nom de votre fichier de données (Appuyez sur Entrée pour 'export_IA.csv') : ").strip()
+    if not fichier_donnees:
+        fichier_donnees = "export_IA.csv"
 
-for fichier in fichiers:
-    if not os.path.exists(fichier):
-        raise FileNotFoundError(
-            f"Le fichier '{fichier}' est introuvable.\n"
-            "Lance notebook.ipynb avant d'exécuter ce script."
-        )
+    # Boucle anti-plantage : tant que le fichier n'est pas trouvé, on redemande
+    while not os.path.exists(fichier_donnees):
+        print(f"\n❌ Erreur : Le fichier '{fichier_donnees}' est introuvable.")
+        print(f"💡 Info : Le terminal cherche actuellement dans ce dossier : {os.getcwd()}")
+        choix = input("👉 Tapez le bon nom de fichier (ou 'q' pour quitter) : ").strip()
+        if choix.lower() == 'q':
+            print("Arrêt du script.")
+            return
+        fichier_donnees = choix
 
+    # 2. Demander le nombre de clusters (Interactivité)
+    k_input = input("\n👉 Combien de zones (clusters) voulez-vous identifier ? (Appuyez sur Entrée pour 6) : ").strip()
+    n_clusters = int(k_input) if k_input.isdigit() else 6
 
-# =====================================
-# Chargement des modèles
-# =====================================
+    # 3. Chargement des données
+    print("\n" + "-"*60)
+    animer_texte(f"[1/4] Chargement des données depuis '{fichier_donnees}'...")
+    df = pd.read_csv(fichier_donnees, low_memory=False)
+    df = df.dropna(subset=['consolidated_latitude', 'consolidated_longitude'])
+    
+    # 4. L'Intelligence Artificielle (K-Means)
+    animer_texte(f"[2/4] Entraînement de l'IA K-Means pour trouver {n_clusters} zones...")
+    coordonnees = df[['consolidated_latitude', 'consolidated_longitude']]
+    
+    scaler = StandardScaler()
+    coordonnees_scalees = scaler.fit_transform(coordonnees)
+    
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    df['Cluster'] = kmeans.fit_predict(coordonnees_scalees)
 
-model_rf = joblib.load("modele_random_forest.pkl")
-encoders = joblib.load("encoders.pkl")
-encoder_y = joblib.load("encoder_y.pkl")
+    # 5. Création de la Carte de Chaleur
+    animer_texte("[3/4] Création de la carte de chaleur (Densité)...")
+    carte_chaleur = folium.Map(location=[46.603354, 1.888334], zoom_start=6)
+    donnees_chaleur = df[['consolidated_latitude', 'consolidated_longitude']].values.tolist()
+    HeatMap(donnees_chaleur, radius=10, blur=15).add_to(carte_chaleur)
+    carte_chaleur.save('carte_chaleur.html')
 
-print("Modèles chargés avec succès")
+    # 6. Création de la Carte des Clusters
+    animer_texte("[4/4] Création de la carte des zones stratégiques...")
+    carte_clusters = folium.Map(location=[46.603354, 1.888334], zoom_start=6)
+    
+    # Liste de couleurs étendue pour Folium (au cas où l'utilisateur demande beaucoup de zones)
+    couleurs_base = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred', 'beige', 'darkblue', 'darkgreen', 'cadetblue', 'darkpurple', 'white', 'pink', 'lightblue', 'lightgreen', 'gray', 'black', 'lightgray']
+    couleurs = (couleurs_base * (n_clusters // len(couleurs_base) + 1))[:n_clusters]
+    
+    # Échantillon pour éviter de faire ramer le navigateur web
+    echantillon = df.sample(n=min(3000, len(df)), random_state=42)
+    
+    for _, ligne in echantillon.iterrows():
+        folium.CircleMarker(
+            location=[ligne['consolidated_latitude'], ligne['consolidated_longitude']],
+            radius=3,
+            color=couleurs[ligne['Cluster']],
+            fill=True,
+            fill_opacity=0.7
+        ).add_to(carte_clusters)
+        
+    carte_clusters.save('carte_clusters.html')
 
+    print("\n" + "="*60)
+    animer_texte("✅ OPÉRATION TERMINÉE AVEC SUCCÈS ! ✅")
+    print("Deux fichiers ont été créés dans votre dossier :")
+    print("  1. 'carte_chaleur.html'")
+    print("  2. 'carte_clusters.html'")
+    print("Ouvrez-les dans votre navigateur Web (Chrome, Edge, Safari...)")
+    print("="*60 + "\n")
 
-# =====================================
-# Fonctions de conversion 
-# =====================================
-
-def convert_bool(x):
-    return "VRAI" if x == "1" else "FAUX"
-
-def convert_acces(x):
-    return "Accès libre" if x == "1" else "restreint"
-
-def convert_pmr(x):
-    return "Accessible" if x == "1" else "Non accessible"
-
-def convert_gabarit(x):
-    return "Aucune" if x == "1" else "hauteur max 3m"
-
-def convert_horaires(x):
-    return "24h/24" if x == "1" else "Mo-Sa 08:30-20:00,Su 08:30-12:15"
-
-
-# =====================================
-# Saisie utilisateur 
-# =====================================
-
-print("\n===== Saisie des informations de la borne =====")
-
-try:
-    nouvelle_donnee = {
-
-        "nbre_pdc": int(input("Nombre de points de charge : ")),
-
-        "puissance_nominale": float(input("Puissance nominale (kW) : ")),
-
-        "prise_type_2": convert_bool(input("Prise Type 2 (1=VRAI / 0=FAUX) : ")),
-
-        "prise_type_combo_ccs": convert_bool(input("Prise Combo CCS (1=VRAI / 0=FAUX) : ")),
-
-        "prise_type_chademo": convert_bool(input("Prise CHAdeMO (1=VRAI / 0=FAUX) : ")),
-
-        "paiement_acte": convert_bool(input("Paiement à l'acte (1=VRAI / 0=FAUX) : ")),
-
-        "condition_acces": convert_acces(input("Condition d'accès (1=Accès libre, 0=Accès restreint) : ")),
-
-        "reservation": convert_bool(input("Réservation (1=VRAI / 0=FAUX) : ")),
-
-        "accessibilite_pmr": convert_pmr(input("Accessibilité PMR (1=Accessible / 0=Non accessible) : ")),
-
-        "restriction_gabarit": convert_gabarit(input("Restriction de gabarit (1=Aucune / 0=Hauteur max 3m) : ")),
-
-        "horaires": convert_horaires(input("Horaires (1=24h/24 / 0=horaires limités) : "))
-    }
-
-except Exception as e:
-    print("\n Erreur de saisie :", e)
-    print(" Vérifie que tu entres bien des nombres (1 ou 0)")
-    exit()
-
-
-# =====================================
-# Conversion en DataFrame
-# =====================================
-
-X_new = pd.DataFrame([nouvelle_donnee])
-
-
-# =====================================
-# Nettoyage (identique au notebook)
-# =====================================
-
-cols_bool = [
-    "prise_type_2",
-    "prise_type_combo_ccs",
-    "prise_type_chademo",
-    "paiement_acte",
-    "reservation"
-]
-
-for col in cols_bool:
-    X_new[col] = X_new[col].fillna("FAUX")
-
-X_new = X_new.fillna("inconnu")
-
-
-# =====================================
-# Encodage
-# =====================================
-
-for col, encoder in encoders.items():
-
-    X_new[col] = X_new[col].astype(str)
-
-    valeurs_connues = list(encoder.classes_)
-
-    if "inconnu" in valeurs_connues:
-        X_new[col] = X_new[col].apply(
-            lambda x: x if x in valeurs_connues else "inconnu"
-        )
-    else:
-        X_new[col] = X_new[col].apply(
-            lambda x: x if x in valeurs_connues else valeurs_connues[0]
-        )
-
-    X_new[col] = encoder.transform(X_new[col])
-
-
-# =====================================
-# Prédiction
-# =====================================
-
-prediction = model_rf.predict(X_new)
-implantation = encoder_y.inverse_transform(prediction)
-
-
-# =====================================
-# Résultat final
-# =====================================
-
-print("\n==========================")
-print("TYPE D'IMPLANTATION PRÉDIT")
-print("==========================")
-
-print(f" {implantation[0]}")
-
-print("\n Prédiction terminée")
+# --- POINT D'ENTRÉE ---
+if __name__ == "__main__":
+    creer_les_cartes_interactives()
